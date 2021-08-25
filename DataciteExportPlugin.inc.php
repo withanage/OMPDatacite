@@ -806,11 +806,6 @@ class DataciteExportPlugin extends ImportExportPlugin {
 		$api = $this->getSetting($press->getId(), 'api');
 		$password = $this->getSetting($press->getId(), 'password');
 
-		if( $httpProxyHost = Config::getVar( 'proxy', 'http_host' ) )
-		{
-			curl_setopt( $curlCh, CURLOPT_PROXY, $httpProxyHost );
-			curl_setopt( $curlCh, CURLOPT_PROXYPORT, Config::getVar( 'proxy', 'http_port', '80' ) );
-
 		if ($httpProxyHost = Config::getVar('proxy', 'http_host')) {
 			curl_setopt($curlCh, CURLOPT_PROXY, $httpProxyHost);
 			curl_setopt($curlCh, CURLOPT_PROXYPORT, Config::getVar('proxy', 'http_port', '80'));
