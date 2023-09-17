@@ -93,19 +93,6 @@ class DatacitePlugin extends GenericPlugin implements IDoiRegistrationAgency
     }
 
     /**
-     * Helper to register hooks that are used in normal plugin setup and in CLI tool usage.
-     */
-    private function _pluginInitialization(): void
-    {
-        //TODO: PluginRegistry::register('importexport', new DataciteExportPlugin($this), $this->getPluginPath());
-
-        Hook::add('DoiSettingsForm::setEnabledRegistrationAgencies', [$this, 'addAsRegistrationAgencyOption']);
-        Hook::add('DoiSetupSettingsForm::getObjectTypes', [$this, 'addAllowedObjectTypes']);
-        Hook::add('DoiListPanel::setConfig', [$this, 'addRegistrationAgencyName']);
-    }
-
-
-    /**
      * @param Submission[] $submissions
      *
      */
@@ -282,7 +269,17 @@ class DatacitePlugin extends GenericPlugin implements IDoiRegistrationAgency
         return $this->_exportPlugin;
     }
 
+    /**
+     * Helper to register hooks that are used in normal plugin setup and in CLI tool usage.
+     */
+    private function _pluginInitialization(): void
+    {
+        PluginRegistry::register('importexport', new DataciteExportPlugin($this), $this->getPluginPath());
 
+        Hook::add('DoiSettingsForm::setEnabledRegistrationAgencies', [$this, 'addAsRegistrationAgencyOption']);
+        Hook::add('DoiSetupSettingsForm::getObjectTypes', [$this, 'addAllowedObjectTypes']);
+        Hook::add('DoiListPanel::setConfig', [$this, 'addRegistrationAgencyName']);
+    }
 
     /**
      * Includes human-readable name of registration agency for display in conjunction with how/with whom the
