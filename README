@@ -11,6 +11,8 @@ Current Schema version is [4.3](https://support.datacite.org/docs/datacite-metad
 OMP=/path/to/OMP_INSTALLATION
 cd $OMP/plugins/generic
 git clone https://github.com/withanage/datacite
+
+php lib/pkp/tools/installPluginVersion.php plugins/generic/datacite/version.xml
 ```
 
 ####  Setup Datacite

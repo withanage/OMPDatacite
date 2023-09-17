@@ -256,12 +256,12 @@ class DatacitePlugin extends GenericPlugin implements IDoiRegistrationAgency
      */
     private function _getExportPlugin(): DataciteExportPlugin
     {
-        if (empty($this->_exportPlugin)) {
+        if (!$this->_exportPlugin instanceof DataciteExportPlugin) {
             $pluginCategory = 'importexport';
             $pluginPathName = 'DataciteExportPlugin';
             $this->_exportPlugin = PluginRegistry::getPlugin($pluginCategory, $pluginPathName);
             // If being run from CLI, there is no context, so plugin initialization would not have been fired
-            if ($this->_exportPlugin === null && !isset($_SERVER['SERVER_NAME'])) {
+            if ($this->_exportPlugin === null /**&& !isset($_SERVER['SERVER_NAME'])*/) {
                 $this->_pluginInitialization();
                 $this->_exportPlugin = PluginRegistry::getPlugin($pluginCategory, $pluginPathName);
             }
@@ -276,9 +276,9 @@ class DatacitePlugin extends GenericPlugin implements IDoiRegistrationAgency
     {
         PluginRegistry::register('importexport', new DataciteExportPlugin($this), $this->getPluginPath());
 
-        Hook::add('DoiSettingsForm::setEnabledRegistrationAgencies', [$this, 'addAsRegistrationAgencyOption']);
-        Hook::add('DoiSetupSettingsForm::getObjectTypes', [$this, 'addAllowedObjectTypes']);
-        Hook::add('DoiListPanel::setConfig', [$this, 'addRegistrationAgencyName']);
+        Hook::add('DoiSettingsForm::setEnabledRegistrationAgencies', $this-> addAsRegistrationAgencyOption(...));
+        Hook::add('DoiSetupSettingsForm::getObjectTypes', $this->addAllowedObjectTypes(...));
+        Hook::add('DoiListPanel::setConfig', $this->addRegistrationAgencyName(...));
     }
 
     /**

@@ -31,7 +31,7 @@
                 symbolic="publicationFormat=>datacite-xml"
                 displayName="plugins.importexport.datacite.displayName"
                 description="plugins.importexport.datacite.description"
-                inputType="class::classes.publicationFormat/PublicationFormat"
+                inputType="class::classes.publicationFormat.PublicationFormat"
                 outputType="xml::schema(http://schema.datacite.org/meta/kernel-4/metadata.xsd)" />
     </filterGroups>
     <filters>

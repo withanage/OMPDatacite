@@ -43,12 +43,17 @@ class PubObjectCache
         if ($object instanceof Chapter) {
             assert($parent instanceof Publication);
             $this->_insertInternally($object, 'chapter', $object->getSourceChapterId());
-            $this->_insertInternally($object, 'chaptersByPublication', $parent->getId(), $object->getSourceChapterId());
+            if ($parent) {
+                $this->_insertInternally($object, 'chaptersByPublication', $parent->getId(), $object->getSourceChapterId());
+            }
+
         }
         if ($object instanceof PublicationFormat) {
             assert($parent instanceof Publication);
             $this->_insertInternally($object, 'publicationFormats', $object->getId());
-            $this->_insertInternally($object, 'publicationFormatsByPublication', $parent->getId(), $object->getId());
+            if ($parent) {
+                $this->_insertInternally($object, 'publicationFormatsByPublication', $parent->getId(), $object->getId());
+            }
         }
     }
 

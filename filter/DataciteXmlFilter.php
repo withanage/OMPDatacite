@@ -314,7 +314,7 @@ class DataciteXmlFilter extends NativeExportFilter
         // Get an array of localized titles.
         $publicationFormatNames = [];
         if (null !==  $publicationFormat) {
-            $publicationFormatNames = $publicationFormat->getName($objectLocalePrecedence);
+            $publicationFormatNames = $publicationFormat->getName();
             $publicationFormatNames = $this->getTranslationsByPrecedence($publicationFormatNames, $objectLocalePrecedence);
         }
         $chapterTitles = [];
@@ -527,14 +527,16 @@ class DataciteXmlFilter extends NativeExportFilter
         $plugin = $deployment->getPlugin();
         $descriptions = [];
         $descriptions = $chapter ? $chapter->getData('abstract') : $publication->getData('abstract');
-        $descriptions = $this->getPrimaryTranslation($descriptions, $objectLocalePrecedence);
 
         $descriptionsNode = null;
         if (!empty($descriptions)) {
-            $descriptionsNode = $doc->createElementNS($deployment->getNamespace(), 'descriptions');
-            foreach ($descriptions as $description) {
-                $descriptionsNode->appendChild($node = $doc->createElementNS($deployment->getNamespace(), 'description', htmlspecialchars(PKPString::html2text($description), ENT_COMPAT, 'UTF-8')));
-                $node->setAttribute('descriptionType', self::DATACITE_DESCTYPE_ABSTRACT);
+            $descriptions = $this->getPrimaryTranslation($descriptions, $objectLocalePrecedence);
+            if (!empty($descriptions)) {
+                $descriptionsNode = $doc->createElementNS($deployment->getNamespace(), 'descriptions');
+                foreach ($descriptions as $description) {
+                    $descriptionsNode->appendChild($node = $doc->createElementNS($deployment->getNamespace(), 'description', htmlspecialchars(PKPString::html2text($description), ENT_COMPAT, 'UTF-8')));
+                    $node->setAttribute('descriptionType', self::DATACITE_DESCTYPE_ABSTRACT);
+                }
             }
         }
         return $descriptionsNode;

@@ -60,7 +60,7 @@ abstract class PubObjectsExportPlugin extends ImportExportPlugin
     public const EXPORT_CONFIG_ERROR_SETTINGS = 0x02;
 
     /** @var ?PubObjectCache */
-    public ?PubObjectCache $_cache;
+    public ?PubObjectCache $_cache = null;
 
     /**
      * Get the plugin cache
