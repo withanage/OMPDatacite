@@ -3,27 +3,25 @@ namespace APP\plugins\generic\datacite;
 
 
 use APP\core\Application;
+use APP\core\Request;
 use APP\facades\Repo;
 use APP\monograph\Chapter;
-use APP\notification\NotificationManager;
 use APP\plugins\generic\datacite\classes\DataciteSettings;
+use APP\plugins\generic\datacite\classes\DOIPubIdExportPlugin;
 use APP\publication\Publication;
 use APP\publicationFormat\PublicationFormat;
-use APP\submission\Submission;
-use DateTime;
-use DOMDocument;
-use JsonException;
+use Exception;
 use PKP\config\Config;
 use PKP\context\Context;
 use PKP\core\DataObject;
+use PKP\core\PKPApplication;
 use PKP\core\PKPString;
 use PKP\doi\Doi;
 use PKP\file\FileManager;
 use PKP\file\TemporaryFileManager;
-use PKP\notification\PKPNotification;
-use PKP\plugins\ImportExportPlugin;
+use PKP\submissionFile\SubmissionFile;
 
-class DataciteExportPlugin extends ImportExportPlugin {
+class DataciteExportPlugin extends DOIPubIdExportPlugin {
 	#region constants
 	//additional field names
 	public const DEPOSIT_STATUS_FIELD_NAME = 'datacite-export::status';
@@ -34,63 +32,62 @@ class DataciteExportPlugin extends ImportExportPlugin {
 	public const EXPORT_STATUS_MARKEDREGISTERED = 'markedRegistered';
 	public const EXPORT_STATUS_REGISTERED       = 'registered';
 
-	//notifications
-	private const RESPONSE_KEY_STATUS                = 'status';
-	private const RESPONSE_KEY_MESSAGE               = 'message';
-	private const RESPONSE_KEY_TITLE                 = 'title';
-	private const RESPONSE_KEY_ACTION                = 'action';
-	private const RESPONSE_KEY_TYPE                  = 'type';
-	private const RESPONSE_MESSAGE_MARKED_REGISTERED = 'Marked registered';
-	private const RESPONSE_OBJECT_TYPE_SUBMISSION    = 'Submission';
-	private const RESPONSE_OBJECT_TYPE_CHAPTER       = 'Chapter';
-    private const RESPONSE_OBJECT_TYPE_PUBLICATION_FORMAT = 'PublicationFormat';
-	private const RESPONSE_ACTION_MARKREGISTERED     = 'mark registered';
-	private const RESPONSE_ACTION_DEPOSIT            = 'deposit';
-	private const RESPONSE_ACTION_REDEPOSIT          = 'redposit';
 
     //DataCite API
-    private const DATACITE_API_URL = 'https://mds.datacite.org/';
-    private const DATACITE_API_URL_TEST = 'https://mds.test.datacite.org/';
+    public const DATACITE_API_URL = 'https://mds.test.datacite.org/'; //TODO: remove test
+    public const DATACITE_API_URL_TEST = 'https://mds.test.datacite.org/';
 
 	//API response
-	private const DATACITE_API_RESPONSE_OK                         = array(200, 201);
-	private const DATACITE_API_RESPONSE_DOI_HAS_ALREADY_BEEN_TAKEN = array(422, 'This DOI has already been taken');
+	public const DATACITE_API_RESPONSE_OK                         = [200, 201];
+	public const DATACITE_API_RESPONSE_DOI_HAS_ALREADY_BEEN_TAKEN = [422, 'This DOI has already been taken'];
 	#endregion
 
-    private DatacitePlugin $_agencyPlugin;
+    protected DatacitePlugin $agencyPlugin;
 
-    public function __construct( DatacitePlugin $agencyPlugin )
+    public function __construct(DatacitePlugin $agencyPlugin)
     {
         parent::__construct();
-        $this->_agencyPlugin = $agencyPlugin;
+
+        $this->agencyPlugin = $agencyPlugin;
     }
 
-    public function register($category, $path, $mainContextId = NULL) : bool
+    public function getName(): string
     {
-        $success = parent::register($category, $path, $mainContextId);
-        if ($success) {
-            if (Application::isUnderMaintenance()) {
-                return true;
-            }
-        }
-        return $success;
-    }
-
-    public function getName() : string
-    {
-
         return 'DataciteExportPlugin';
     }
 
-    public function getDisplayName() : string
+    public function getDisplayName(): string
     {
         return __('plugins.importexport.datacite.displayName');
     }
 
-    public function getDescription() : string
+    public function getDescription(): string
     {
+        return __('plugins.importexport.datacite.description');
+    }
 
-        return __( 'plugins.importexport.datacite.description' );
+    /**
+     * @copydoc PubObjectsExportPlugin::getPublicationFilter()
+     */
+    public function getPublicationFilter(): string
+    {
+        return 'publication=>datacite-xml';
+    }
+
+    /**
+     * @copydoc PubObjectsExportPlugin::getChapterFilter()
+     */
+    public function getChapterFilter(): string
+    {
+        return 'chapter=>datacite-xml';
+    }
+
+    /**
+     * @copydoc PubObjectsExportPlugin::getRepresentationFilter()
+     */
+    public function getRepresentationFilter(): string
+    {
+        return 'publicationFormat=>datacite-xml';
     }
 
     public function getPluginSettingsPrefix(): string
@@ -98,252 +95,96 @@ class DataciteExportPlugin extends ImportExportPlugin {
         return 'datacite';
     }
 
-    public function usage($scriptName) : void {
-        fatalError('Not implemented.');
+    /**
+     * @copydoc DOIPubIdExportPlugin::getSettingsFormClassName()
+     */
+    public function getSettingsFormClassName(): string
+    {
+        throw new Exception('DOI settings no longer managed via plugin settings form.');
     }
 
-    public function executeCLI(		$scriptName, &$args) : void
+    /**
+     * @copydoc PubObjectsExportPlugin::getExportDeploymentClassName()
+     */
+    public function getExportDeploymentClassName(): string
     {
-        fatalError('Not implemented.');
+        return '\APP\plugins\generic\datacite\DataciteExportDeployment';
     }
 
     public function getSetting($contextId, $name)
     {
-        return $this->_agencyPlugin->getSetting($contextId, $name);
-    }
-
-	public function isTestMode($context) : bool
-    {
-        return ($this->getSetting($context->getId(), DataciteSettings::KEY_TEST_MODE) == 1);
-	}
-
-    public function getDataciteAPITestPrefix(Context $context) {
-        return $this->getSetting( $context->getId(), DataciteSettings::KEY_TEST_DOI_PREFIX);
+        return $this->agencyPlugin->getSetting($contextId, $name);
     }
 
     /**
-     * @param DataObject $object
-     * @param Context    $context
-     * @param string     $filename
-     * @param bool       $isRedeposit
+     * @param DataObject[] $objects
      *
-     * @return mixed
      */
-	public function depositXML(DataObject $object, Context $context, string $filename, bool $isRedeposit = false): array
-    {
-		$request = Application::get()->getRequest();
-        $doi = $object->getDoi();
+    public function exportAndDeposit(
+        Context $context,
+        array $objects,
+        string &$responseMessage,
+        ?bool $noValidation = null
+    ): bool {
+        $fileManager = new FileManager();
 
-		if ($object instanceof Publication) {
-			$url = $request->url(
-				$context->getPath(),
-				'catalog',
-				'book',
-				[$object->getData('submissionId')]
-			);
-		} elseif ($object instanceof Chapter) {
-            $publication = Repo::publication()->get($object->getData('publicationId'));
-			$url = $request->url(
-				$context->getPath(),
-				'catalog',
-				'book',
-				[$publication->getData('submissionId'), 'chapter', $object->getSourceChapterId()]
-			);
-		} elseif ($object instanceof PublicationFormat) {
-            $publication = Repo::publication()->get($object->getData('publication_id'));
-            $url = $request->url(
-                $context->getPath(),
-                'catalog',
-                'book',
-                [$publication->getData('submissionId')]
-            );
-        }
+        $errorsOccurred = false;
+        foreach ($objects as $object) {
 
-        assert(!empty($url));
-        $curlCh = curl_init();
-
-		assert(!empty($doi));
-		if ($this->isTestMode($context)) {
-			$doi = $this->createTestDOI($doi, $context);
-            $username = $this->getSetting($context->getId(), DataciteSettings::KEY_TEST_USERNAMER);
-            $dataCiteAPIUrl = self::DATACITE_API_URL_TEST;
-            $password = $this->getSetting($context->getId(), DataciteSettings::KEY_TEST_PASSWORD);
-		} else {
-            $username = $this->getSetting($context->getId(), DataciteSettings::KEY_USERNAME);
-            $dataCiteAPIUrl = self::DATACITE_API_URL;
-            $password = $this->getSetting($context->getId(), DataciteSettings::KEY_PASSWORD);
-        }
-
-		if ($httpProxyHost = Config::getVar('proxy', 'http_host')) {
-			curl_setopt($curlCh, CURLOPT_PROXY, $httpProxyHost);
-			curl_setopt($curlCh, CURLOPT_PROXYPORT, Config::getVar('proxy', 'http_port', '80'));
-
-			if ($username = Config::getVar('proxy', 'username')) {
-				curl_setopt($curlCh, CURLOPT_PROXYUSERPWD, $username . ':' . Config::getVar('proxy', 'password'));
-			}
-		}
-
-        if ($isRedeposit) {
-            $dataCiteAPIUrl = str_replace(array('api', '/dois'), array('mds', '/metadata/'), $dataCiteAPIUrl);
-            $dataCiteAPIUrl .= $doi;
-            curl_setopt($curlCh, CURLOPT_HTTPHEADER, array('Content-Type: text/plain;charset=UTF-8'));
-        } else {
-            curl_setopt($curlCh, CURLOPT_HTTPHEADER, array('Content-Type: application/vnd.api+json'));
-        }
-
-		curl_setopt($curlCh, CURLOPT_VERBOSE, TRUE);
-		curl_setopt($curlCh, CURLOPT_RETURNTRANSFER, TRUE);
-		curl_setopt($curlCh, CURLOPT_HTTPAUTH, CURLAUTH_BASIC);
-		curl_setopt($curlCh, CURLOPT_USERPWD, "$username:$password");
-		curl_setopt($curlCh, CURLOPT_SSL_VERIFYPEER, TRUE);
-		curl_setopt($curlCh, CURLOPT_URL, $dataCiteAPIUrl);
-
-		assert( is_readable( $filename ) );
-		$payload = file_get_contents( $filename );
-
-		assert(empty($payload));
-		$fp = fopen($filename, 'rb');
-
-		curl_setopt($curlCh, CURLOPT_VERBOSE, FALSE);
-
-		if ($isRedeposit) {
-			curl_setopt($curlCh, CURLOPT_PUT, TRUE);
-			curl_setopt($curlCh, CURLOPT_INFILE, $fp);
-		} else {
-            $payload = $this->createDatacitePayload($object, $url, $payload, TRUE);
-			curl_setopt($curlCh, CURLOPT_POSTFIELDS, $payload);
-		}
-
-		$responseMessage = curl_exec($curlCh);
-		$status = curl_getinfo($curlCh, CURLINFO_HTTP_CODE);
-		curl_close($curlCh);
-		fclose($fp);
-
-		if (in_array($status, self::DATACITE_API_RESPONSE_OK, FALSE)) {
-            // Test mode submits entirely different DOI and URL so the status of that should not be stored in the database
-            // for the real DOI
-            if (!$this->isTestMode($context)) {
-                $this->updateDepositStatus($object, Doi::STATUS_REGISTERED);
+            if ($this->isMarkedRegistered($object)) {
+                continue;
             }
-		} else if (self::DATACITE_API_RESPONSE_DOI_HAS_ALREADY_BEEN_TAKEN[0] === $status
-			&& strpos($responseMessage, self::DATACITE_API_RESPONSE_DOI_HAS_ALREADY_BEEN_TAKEN[1]) > -1
-		) {
-			$this->depositXML($object, $context, $filename, TRUE);
-		}
 
-		return [
-			self::RESPONSE_KEY_STATUS  => $status,
-			self::RESPONSE_KEY_MESSAGE => $responseMessage
-		];
-	}
+            /** @var Doi $doiObject */
+            $doiObject = $object->getData('doiObject');
+            $doiStatus = $doiObject->getStatus();
+            if ($doiStatus == Doi::STATUS_STALE  || $doiStatus == Doi::STATUS_REGISTERED) {
+                $isRedeposit = true;
+            } else {
+                $isRedeposit = false;
+            }
 
-	public function createTestDOI($doi, Context $context) : array|string|null
-    {
-		return PKPString::regexp_replace('#^[^/]+/#', $this->getDataciteAPITestPrefix($context) . '/', $doi);
-	}
+            // Get the XML
+            $exportErrors = [];
+            $filter = $this->_getFilterFromObject($object);
+            $exportXml = $this->exportXML($object, $filter, $context, $noValidation, $exportErrors);
+            // Write the XML to a file.
+            // export file name example: datacite-20160723-160036-articles-1-1.xml
+            $objectFileNamePart = $this->_getObjectFileNamePart($object);
+            $exportFileName = $this->getExportFileName($this->getExportPath(), $objectFileNamePart, $context, '.xml');
+            $fileManager->writeFile($exportFileName, $exportXml);
+            // Deposit the XML file.
+            $result = $this->depositXML($object, $context, $exportFileName);
+            if (!$result) {
+                $errorsOccurred = true;
+            }
+            if (is_array($result)) {
+                $resultErrors[] = $result;
+            }
+            // Remove all temporary files.
+            $fileManager->deleteByPath($exportFileName);
+        }
+        // Prepare response message and return status
+        if (empty($resultErrors)) {
+            if ($errorsOccurred) {
+                $responseMessage = 'plugins.generic.datacite.deposit.unsuccessful';
+                return false;
+            } else {
+                $responseMessage = $this->getDepositSuccessNotificationMessageKey();
+                return true;
+            }
+        } else {
+            $responseMessage = 'api.dois.400.depositFailed';
+            return false;
+        }
+    }
 
-
-
-	public function createDatacitePayload($obj, $url, $payload, $payLoadAvailable = FALSE) : bool|string
-    {
-		$doi = $obj->getDoi();
-		$request = Application::get()->getRequest();
-		$context = $request->getContext();
-		if ($this->isTestMode($context)) {
-			$doi = $this->createTestDOI($doi, $context);
-		}
-		if ($payLoadAvailable) {
-			$jsonPayload = [
-				'data' => [
-					'id'         => $doi,
-					'type'       => 'dois',
-					'attributes' => [
-						'event' => 'publish',
-						'doi'   => $doi,
-						'url'   => $url,
-						'xml'   => base64_encode($payload)
-					]
-				]
-			];
-		} else {
-			$jsonPayload = [
-				'data' => [
-					'type'       => 'dois',
-					'attributes' => ['doi' => $doi]
-				]
-			];
-		}
-
-		try {
-			return json_encode($jsonPayload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
-		}
-		catch (JsonException $e) {
-			$notificationManager = new NotificationManager();
-			$user = $request->getUser();
-			if (NULL !== $user) {
-				$notificationManager->createTrivialNotification(
-					$user->getId(),
-					PKPNotification::NOTIFICATION_TYPE_ERROR,
-					['contents' => $e]
-				);
-			}
-			return '';
-		}
-	}
-
-	public function createNotifications(array $responses): array
-    {
-		$noError = true;
-        $text = '';
-        foreach ($responses as $id => $returnValues) {
-			$status = $returnValues[self::RESPONSE_KEY_STATUS];
-			$title = $returnValues[self::RESPONSE_KEY_TITLE];
-			$message = $returnValues[self::RESPONSE_KEY_MESSAGE];
-			$type = $returnValues[self::RESPONSE_KEY_TYPE];
-			$action = $returnValues[self::RESPONSE_KEY_ACTION];
-			$success = in_array($status, self::DATACITE_API_RESPONSE_OK, FALSE)
-				|| (empty($status) && $message === self::RESPONSE_MESSAGE_MARKED_REGISTERED);
-
-
-			if ($success) {
-				switch ($action) {
-					case self::RESPONSE_ACTION_DEPOSIT:
-					case self::RESPONSE_ACTION_REDEPOSIT:
-						$actionType = $action . 'ed';
-						break;
-					case self::RESPONSE_ACTION_MARKREGISTERED:
-						$actionType = 'marked registered';
-						break;
-					default:
-						$actionType = '';
-				}
-				$text .= 'Successfully ' . $actionType . '! ' . $type . '-id: ' . $id . '; Title: ' . $title
-							. '; Status: ' . $status . '; Message: ' . $message . '<br/>';
-			} else {
-                $noError = false;
-				self::writeLog(
-					'STATUS ' . $status . ' | ' . strtoupper($type) . '-ID ' . $id . ' | ' . $message,
-					strtoupper($action) . ' ERROR'
-				);
-			    $text .= 'Error! Action: ' . $action . '; ' . $type . '-id: ' . $id . '; Title: ' . $title
-							. '; Status: ' . $status . '; Message: ' . $message . '<br/>';
-			}
-		}
-
-        return [$noError, $text];
-	}
-
-	public static function writeLog($message, $level) : void {
-		$time = new DateTime();
-		$time = $time->format('d-M-Y H:i:s e');
-		error_log("[$time] | $level | $message\n", 3, self::logFilePath());
-	}
-
-	public static function logFilePath() : string {
-
-		return Config::getVar( 'files', 'files_dir' ) . '/DATACITE_ERROR.log';
-	}
-
+    /**
+     * Exports and stores XML as a TemporaryFile
+     *
+     *
+     * @throws Exception
+     */
     public function exportAsDownload(Context $context, array $objects, ?bool $noValidation = null, ?array &$outputErrors = null): ?int
     {
         $fileManager = new TemporaryFileManager();
@@ -352,9 +193,11 @@ class DataciteExportPlugin extends ImportExportPlugin {
         $result = $this->_checkForTar();
         if ($result === true) {
             $exportedFiles = [];
+            $objectFileNamePart = '';
             foreach ($objects as $object) {
+                $filter = $this->_getFilterFromObject($object);
                 // Get the XML
-                $exportXml = $this->exportXML($object);
+                $exportXml = $this->exportXML($object, $filter, $context, $noValidation, $outputErrors);
                 // Write the XML to a file.
                 // export file name example: datacite-20160723-160036-books-1-1.xml
                 $objectFileNamePart = $this->_getObjectFileNamePart($object);
@@ -374,7 +217,7 @@ class DataciteExportPlugin extends ImportExportPlugin {
                 // tar file name: e.g. datacite-20160723-160036-books-1.tar.gz
                 $finalExportFileName = $this->getExportFileName(
                     $this->getExportPath(),
-                    'export',
+                    $objectFileNamePart,
                     $context,
                     '.tar.gz'
                 );
@@ -395,66 +238,106 @@ class DataciteExportPlugin extends ImportExportPlugin {
     }
 
     /**
-     * @param DataObject[] $objects
+     * @param array|DataObject $objects
+     * @param Context          $context
+     * @param string           $filename
+     * @param bool             $isRedeposit
      *
+     * @return array|bool
      */
-    public function exportAndDeposit(Context $context, array $objects, string &$responseMessage, ?bool $noValidation = null): bool
+	public function depositXML(array|DataObject $objects, Context $context, string $filename, bool $isRedeposit = false): array|bool
     {
-        $fileManager = new FileManager();
-
-        $result = [];
-        foreach ($objects as $object) {
-            if ($this->isMarkedRegistered($object)) {
-                continue;
-            }
-
-            /** @var Doi $doiObject */
-            $doiObject = $object->getData('doiObject');
-            $doiStatus = $doiObject->getStatus();
-            if ($doiStatus == Doi::STATUS_STALE  || $doiStatus == Doi::STATUS_REGISTERED) {
-                    $isRedeposit = true;
-            } else {
-                $isRedeposit = false;
-            }
-
-            // Get the XML
-            $exportXml = $this->exportXML($object);
-
-            // Write the XML to a file.
-            // export file name example: datacite-20160723-160036-books-1-1.xml
-            $objectFileNamePart = $this->_getObjectFileNamePart($object);
-            $exportFileName = $this->getExportFileName($this->getExportPath(), $objectFileNamePart, $context, '.xml');
-            $fileManager->writeFile($exportFileName, $exportXml);
-
-            // Deposit the XML file.
-            $response = $this->depositXML($object, $context, $exportFileName, $isRedeposit);
-
-            if ($object instanceof Publication) {
-                $response[self::RESPONSE_KEY_TITLE] = $object->getLocalizedTitle();
-                $response[self::RESPONSE_KEY_TYPE] = self::RESPONSE_OBJECT_TYPE_SUBMISSION;
-                $response[self::RESPONSE_KEY_ACTION] = $isRedeposit ? self::RESPONSE_ACTION_REDEPOSIT : self::RESPONSE_ACTION_DEPOSIT;
-                $result[$object->getData('submissionId')] = $response;
-            } elseif ( $object instanceof Chapter) {
-                $publication = Repo::publication()->get($object->getData('publicationId'));
-                $response[self::RESPONSE_KEY_TITLE] = $object->getTitle();
-                $response[self::RESPONSE_KEY_TYPE] = self::RESPONSE_OBJECT_TYPE_CHAPTER;
-                $response[self::RESPONSE_KEY_ACTION] = $isRedeposit ? self::RESPONSE_ACTION_REDEPOSIT : self::RESPONSE_ACTION_DEPOSIT;
-                $result[$publication->getData('submissionId') . ' chapter ' . $object->getSourceChapterId()] = $response;
-            } elseif ($object instanceof PublicationFormat) {
-                $publication = Repo::publication()->get($object->getData('publicationId'));
-                $response[self::RESPONSE_KEY_TITLE] = $publication->getLocalizedTitle();
-                $response[self::RESPONSE_KEY_TYPE] = self::RESPONSE_OBJECT_TYPE_PUBLICATION_FORMAT;
-                $response[self::RESPONSE_KEY_ACTION] = $isRedeposit ? self::RESPONSE_ACTION_REDEPOSIT : self::RESPONSE_ACTION_DEPOSIT;
-                $result[$publication->getData('submissionId') . ' publication format ' . $object->getId()] = $response;
-            }
-
-            // Remove all temporary files.
-            $fileManager->deleteByPath($exportFileName);
+		if ($objects instanceof DataObject) {
+            $object = $objects;
+        } else {
+            return false;
         }
-        // Prepare response message and return status
-        $notifications = $this->createNotifications( $result );
-        $responseMessage = $notifications[1];
-        return $notifications[0];
+
+        $request = Application::get()->getRequest();
+        // Get the DOI and the URL for the object.
+        $doi = $object->getStoredPubId('doi');
+        assert(!empty($doi));
+        $testDOIPrefix = null;
+        if ($this->isTestMode($context)) {
+            $testDOIPrefix = $this->getSetting($context->getId(), DataciteSettings::KEY_TEST_DOI_PREFIX);
+            assert(!empty($testDOIPrefix));
+            $doi = $this->createTestDOI($doi, $testDOIPrefix);
+        }
+        $url = $this->_getObjectUrl($request, $context, $object);
+        assert(!empty($url));
+
+        $dataCiteAPIUrl = self::DATACITE_API_URL;
+        $username = $this->getSetting($context->getId(), 'username');
+        $password = $this->getSetting($context->getId(), 'password');
+        if ($this->isTestMode($context)) {
+            $dataCiteAPIUrl = self::DATACITE_API_URL_TEST;
+            $username = $this->getSetting($context->getId(), 'testUsername');
+            $password = $this->getSetting($context->getId(), 'testPassword');
+        }
+
+        // Prepare HTTP session.
+        assert(is_readable($filename));
+        $httpClient = Application::get()->getHttpClient();
+        try {
+            $response = $httpClient->request('POST', $dataCiteAPIUrl . 'metadata', [
+                'auth' => [$username, $password],
+                'body' => fopen($filename, 'r'),
+                'headers' => [
+                    'Content-Type' => 'application/xml;charset=UTF-8',
+                ],
+            ]);
+        } catch (\GuzzleHttp\Exception\RequestException $e) {
+            $returnMessage = $e->getMessage();
+            if ($e->hasResponse()) {
+                $returnMessage = $e->getResponse()->getBody() . ' (' . $e->getResponse()->getStatusCode() . ' ' . $e->getResponse()->getReasonPhrase() . ')';
+            }
+            $this->updateDepositStatus($object, Doi::STATUS_ERROR);
+            return [['plugins.importexport.common.register.error.mdsError', "Registering DOI {$doi}: {$returnMessage}"]];
+        }
+
+        // Mint a DOI.
+        $httpClient = Application::get()->getHttpClient();
+        try {
+            $response = $httpClient->request('POST', $dataCiteAPIUrl . 'doi', [
+                'auth' => [$username, $password],
+                'headers' => [
+                    'Content-Type' => 'text/plain;charset=UTF-8',
+                ],
+                'body' => "doi={$doi}\nurl={$url}",
+            ]);
+        } catch (\GuzzleHttp\Exception\RequestException $e) {
+            $returnMessage = $e->getMessage();
+            if ($e->hasResponse()) {
+                $returnMessage = $e->getResponse()->getBody() . ' (' . $e->getResponse()->getStatusCode() . ' ' . $e->getResponse()->getReasonPhrase() . ')';
+            }
+            $this->updateDepositStatus($object, Doi::STATUS_ERROR);
+            return [['plugins.importexport.common.register.error.mdsError', "Registering DOI {$doi}: {$returnMessage}"]];
+        }
+        // Test mode submits entirely different DOI and URL so the status of that should not be stored in the database
+        // for the real DOI
+        if (!$this->isTestMode($context)) {
+            $this->updateDepositStatus($object, Doi::STATUS_REGISTERED);
+        }
+        return true;
+	}
+
+    /**
+     * Update stored DOI status based on if deposits and registration have been successful
+     *
+     * @param DataObject $object
+     * @param string     $status
+     */
+    public function updateDepositStatus(DataObject $object, string $status): void
+    {
+        assert($object instanceof Publication || $object instanceof Chapter || $object instanceof PublicationFormat);
+        $doiObject = $object->getData('doiObject');
+        $editParams = [
+            'status' => $status
+        ];
+        if ($status == Doi::STATUS_REGISTERED) {
+            $editParams['registrationAgency'] = $this->getName();
+        }
+        Repo::doi()->edit($doiObject, $editParams);
     }
 
     /**
@@ -474,41 +357,6 @@ class DataciteExportPlugin extends ImportExportPlugin {
             $result = true;
         }
         return $result;
-    }
-
-    /**
-     * Get the XML for selected objects.
-     *
-     * @param mixed $object publication, chapter or publication format
-     *
-     * @return string XML document.
-     */
-    public function exportXML(DataObject $object): string
-    {
-        $request = Application::get()->getRequest();
-        if ($object instanceof Publication) {
-            $parent = null;
-        } else  {
-            $parent = Repo::publication()->get($object->getData('publicationId'));
-        }
-        $deployment = new DataciteExportDeployment($request, $this);
-        $DOMDocument = new DOMDocument('1.0', 'utf-8');
-        $DOMDocument->formatOutput = TRUE;
-        $DOMDocument = $deployment->createNodes($DOMDocument, $object, $parent);
-        return $DOMDocument->saveXML();
-    }
-
-    private function _getObjectFileNamePart(DataObject $object): string
-    {
-        if ($object instanceof Publication) {
-            return 'book-' . $object->getData('submissionId');
-        } elseif ($object instanceof Chapter) {
-            return 'chapter-' . $object->getSourceChapterId();
-        } elseif ($object instanceof PublicationFormat) {
-            return 'publicationFormat-' . $object->getId();
-        } else {
-            return '';
-        }
     }
 
     /**
@@ -541,34 +389,82 @@ class DataciteExportPlugin extends ImportExportPlugin {
     }
 
     /**
-     * Update stored DOI status based on if deposits and registration have been successful
+     * Get the canonical URL of an object.
      *
+     * @param Request    $request
+     * @param Context    $context
      * @param DataObject $object
-     * @param string     $status
+     *
+     * @return string|null
      */
-    public function updateDepositStatus(DataObject $object, string $status): void
+    public function _getObjectUrl(Request$request, Context $context, DataObject $object): ?string
     {
-        assert($object instanceof Publication || $object instanceof Chapter || $object instanceof PublicationFormat);
-        $doiObject = $object->getData('doiObject');
-        $editParams = [
-            'status' => $status
-        ];
-        if ($status == Doi::STATUS_REGISTERED) {
-            $editParams['registrationAgency'] = $this->getName();
+        //Dispatcher needed when  called from CLI
+        $dispatcher = $request->getDispatcher();
+        $url = null;
+        switch (true) {
+            case $object instanceof Publication:
+                $url = $dispatcher->url($request, PKPApplication::ROUTE_PAGE, $context->getPath(), 'catalog', 'book', [$object->getData('submissionId')], null, null, true);
+                break;
+            case $object instanceof Chapter:
+                $publication = Repo::publication()->get($object->getData('publicationId'));
+                $url = $dispatcher->url($request, PKPApplication::ROUTE_PAGE, $context->getPath(), 'catalog', 'book', [$publication->getData('submissionId'), 'chapter', $object->getSourceChapterId()], null, null, true);
+                break;
+            case $object instanceof PublicationFormat:
+                $publication = Repo::publication()->get($object->getData('publicationId'));
+                $submissionFiles = Repo::submissionFile()
+                    ->getCollector()
+                    ->filterBySubmissionIds([$publication->getData('submissionId')])
+                    ->filterByFileStages([SubmissionFile::SUBMISSION_FILE_PROOF])
+                    ->filterByGenreIds(['3']) //MANUSCRIPT
+                    ->filterByAssoc(Application::ASSOC_TYPE_PUBLICATION_FORMAT, [$object->getId()])
+                    ->getMany()
+                    ->toArray();
+                if (count($submissionFiles) > 0) {
+                    /** @var SubmissionFile $submissionFile */
+                    $submissionFile = array_shift($submissionFiles);
+                    $url = $dispatcher->url($request, PKPApplication::ROUTE_PAGE, $context->getPath(), 'catalog', 'view', [$publication->getData('submissionId'), $object->getId(), $submissionFile->getId()], null, null, true);
+                } else {
+                    $url = $dispatcher->url($request, PKPApplication::ROUTE_PAGE, $context->getPath(), 'catalog', 'book', [$publication->getData('submissionId')], null, null, true);
+                }
+                break;
         }
-        Repo::doi()->edit($doiObject, $editParams);
+
+        if ($this->isTestMode($context)) {
+            // Change server domain for testing.
+            $url = PKPString::regexp_replace('#://[^\s]+/index.php#', '://example.com/index.php', $url);
+        }
+        return $url;
     }
 
-    public function markRegistered($context, $objects): void
+    /**
+     * @param DataObject $object
+     *
+     * @return string
+     */
+    private function _getFilterFromObject(DataObject $object): string
     {
-        foreach ($objects as $object) {
-            if ($object instanceof Submission) {
-                $doiIds = Repo::doi()->getDoisForSubmission($object->getId());
-            }
+        if ($object instanceof Publication) {
+            return $this->getPublicationFilter();
+        } elseif ($object instanceof Chapter) {
+            return $this->getChapterFilter();
+        } elseif ($object instanceof PublicationFormat) {
+            return $this->getRepresentationFilter();
+        } else {
+            return '';
+        }
+    }
 
-            foreach ($doiIds as $doiId) {
-                Repo::doi()->markRegistered($doiId);
-            }
+    private function _getObjectFileNamePart(DataObject $object): string
+    {
+        if ($object instanceof Publication) {
+            return 'book-' . $object->getData('submissionId');
+        } elseif ($object instanceof Chapter) {
+            return 'chapter-' . $object->getSourceChapterId();
+        } elseif ($object instanceof PublicationFormat) {
+            return 'publicationFormat-' . $object->getId();
+        } else {
+            return '';
         }
     }
 

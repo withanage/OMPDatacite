@@ -97,7 +97,7 @@ class DatacitePlugin extends GenericPlugin implements IDoiRegistrationAgency
      */
     private function _pluginInitialization(): void
     {
-        PluginRegistry::register('importexport', new DataciteExportPlugin($this), $this->getPluginPath());
+        //TODO: PluginRegistry::register('importexport', new DataciteExportPlugin($this), $this->getPluginPath());
 
         Hook::add('DoiSettingsForm::setEnabledRegistrationAgencies', [$this, 'addAsRegistrationAgencyOption']);
         Hook::add('DoiSetupSettingsForm::getObjectTypes', [$this, 'addAllowedObjectTypes']);
@@ -160,7 +160,7 @@ class DatacitePlugin extends GenericPlugin implements IDoiRegistrationAgency
         $items = [];
 
         foreach ($submissions as $submission) {
-            $items[] = $submission;
+            $items[] = $submission->getCurrentPublication();
             $currentPublicationId = $submission->getCurrentPublication()->getId();
 
             //chapters
@@ -178,7 +178,7 @@ class DatacitePlugin extends GenericPlugin implements IDoiRegistrationAgency
             //publication formats
             if (in_array(Repo::doi()::TYPE_REPRESENTATION, $context->getEnabledDoiTypes())) {
                 $publicationFormatDAO = new PublicationFormatDAO();
-                $publicationFormats = $publicationFormatDAO->getByPublicationId($currentPublicationId)->toAssociativeArray();
+                $publicationFormats = $publicationFormatDAO->getByPublicationId($currentPublicationId);
                 /** @var PublicationFormat $publicationFormat */
                 foreach ($publicationFormats as $publicationFormat) {
                     if ($publicationFormat->getDoi()) {

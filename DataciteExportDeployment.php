@@ -10,237 +10,131 @@
  */
 namespace APP\plugins\generic\datacite;
 
-use APP\author\Author;
-use APP\monograph\Chapter;
-use APP\publication\Publication;
-use APP\publicationFormat\PublicationFormat;
-use DOMDocument;
-use DOMElement;
-use Exception;
-use PKP\core\DataObject;
-use PKP\core\PKPRequest;
+use APP\plugins\generic\datacite\classes\DOIPubIdExportPlugin;
+use APP\plugins\generic\datacite\classes\PubObjectCache;
+use PKP\context\Context;
 use PKP\plugins\importexport\PKPImportExportDeployment;
-use PKP\xml\XMLNode;
 
 
-class DataciteExportDeployment extends PKPImportExportDeployment {
-
+class DataciteExportDeployment extends PKPImportExportDeployment
+{
+    // XML attributes
     public const DATACITE_XMLNS = 'http://datacite.org/schema/kernel-4';
-    public const DATACITE_XSI_SCHEMA_LOCATION = 'http://schema.datacite.org/meta/kernel-4.3/metadata.xsd';
-    public const XMLNS_XSI = 'http://www.w3.org/2001/XMLSchema-instance';
+    public const DATACITE_XMLNS_XSI = 'http://www.w3.org/2001/XMLSchema-instance';
+    public const DATACITE_XSI_SCHEMAVERSION = '4';
+    public const DATACITE_XSI_SCHEMALOCATION = 'http://schema.datacite.org/meta/kernel-4/metadata.xsd';
 
-	/** @var DataciteExportPlugin $plugin */
-	private DataciteExportPlugin $plugin;
+    /** @var DataciteExportPlugin $_plugin The current import/export plugin */
+    public DataciteExportPlugin $_plugin;
 
-	/**
-	 * DataciteExportDeployment constructor.
-	 *
-	 * @param PKPRequest $request
-	 * @param DataciteExportPlugin $plugin
-	 */
-	public function __construct(PKPRequest $request, DataciteExportPlugin $plugin) {
-		$context = $request->getContext();
-		parent::__construct($context);
-		$this->plugin = $plugin;
-	}
+    /**
+     * Get the plugin cache
+     *
+     * @return PubObjectCache
+     */
+    public function getCache(): PubObjectCache
+    {
+        return $this->_plugin->getCache();
+    }
 
+    /**
+     * Constructor
+     *
+     * @param Context $context
+     * @param DOIPubIdExportPlugin $plugin
+     */
+    public function __construct($context, $plugin)
+    {
+        parent::__construct($context);
+        $this->setPlugin($plugin);
+    }
 
+    //
+    // Deployment items for subclasses to override
+    //
+    /**
+     * Get the root element name
+     *
+     * @return string
+     */
+    public function getRootElementName(): string
+    {
+        return 'resource';
+    }
+
+    /**
+     * Get the namespace URN
+     *
+     * @return string
+     */
     public function getNamespace(): string
     {
         return self::DATACITE_XMLNS;
     }
 
-    private function getRootElementName(): string
+    /**
+     * Get the schema instance URN
+     *
+     * @return string
+     */
+    public function getXmlSchemaInstance(): string
     {
-        return 'resource';
+        return self::DATACITE_XMLNS_XSI;
     }
 
-    private function getXmlSchemaInstance(): string
+    /**
+     * Get the schema version
+     *
+     * @return string
+     */
+    public function getXmlSchemaVersion(): string
     {
-        return self::XMLNS_XSI;
+        return self::DATACITE_XSI_SCHEMAVERSION;
     }
 
-    private function getSchemaLocation(): string
+    /**
+     * Get the schema location URL
+     *
+     * @return string
+     */
+    public function getXmlSchemaLocation(): string
     {
-        return self::DATACITE_XSI_SCHEMA_LOCATION;
+        return self::DATACITE_XSI_SCHEMALOCATION;
     }
 
-    private function xmlEscape($value) : string {
-        return XMLNode::xmlentities($value, ENT_NOQUOTES);
+    /**
+     * Get the schema filename.
+     *
+     * @return string
+     */
+    public function getSchemaFilename(): string
+    {
+        return $this->getXmlSchemaLocation();
     }
 
-	public function createNodes(DOMDocument $documentNode, DataObject $object, null|Publication $parent): DOMDocument
+    //
+    // Getter/setters
+    //
+    /**
+     * Set the import/export plugin.
+     *
+     * @param DataciteExportPlugin $plugin
+     *
+     * @return self
+     */
+    public function setPlugin(DataciteExportPlugin $plugin): self
     {
-		$isSubmission = $parent === null;
-        $documentNode = $this->createRootNode($documentNode);
-		$documentNode = $this->createResourceType($documentNode, $object);
-		$documentNode = $this->createResourceIdentifier($documentNode, $object);
-		$documentNode = $this->createTitles($documentNode, $object, $parent, $isSubmission);
-		$documentNode = $this->createAuthors($documentNode, $object, $parent, $isSubmission);
-		$documentNode = $this->createPublicationYear($documentNode, $object, $parent, $isSubmission);
-        return $this->createPublisher($documentNode);
-	}
+        $this->_plugin = $plugin;
+        return $this;
+    }
 
-	private function createRootNode(DOMDocument $documentNode): DOMDocument
+    /**
+     * Get the import/export plugin.
+     *
+     * @return DataciteExportPlugin
+     */
+    public function getPlugin(): DataciteExportPlugin
     {
-		$rootNode = $documentNode->createElementNS($this->getNamespace(), $this->getRootElementName());
-		$rootNode->setAttributeNS('http://www.w3.org/2000/xmlns/', 'xmlns:xsi', $this->getXmlSchemaInstance());
-		$rootNode->setAttribute('xsi:schemaLocation', $this->getNamespace() . ' ' . $this->getSchemaLocation());
-		$documentNode->appendChild($rootNode);
-
-		return $documentNode;
-	}
-
-	private function createResourceType(DOMDocument $documentNode, DataObject $object): DOMDocument
-    {
-        if ($object instanceof Publication) {
-            $type = 'Monograph';
-        } elseif ($object instanceof Chapter) {
-            $type = 'Chapter';
-        } elseif ($object instanceof PublicationFormat) {
-            $type = 'Publication Format';
-        } else {
-            $type = 'Text';
-        }
-        $e = $documentNode->createElement('resourceType', $type);
-        $e->setAttribute('resourceTypeGeneral', 'Text');
-        $documentNode->documentElement->appendChild($e);
-
-		return $documentNode;
-	}
-
-	private function createResourceIdentifier(DOMDocument $documentNode, DataObject $object): DOMDocument
-    {
-		$doi = $object->getDOI();
-
-		if (isset($doi) && $this->plugin->isTestMode($this->getContext())) {
-			$doi = preg_replace(
-				'/^[\d]+(.)[\d]+/',
-				$this->plugin->getDataciteAPITestPrefix($this->getContext()),
-				$doi
-			);
-		}
-
-        $identifier = $documentNode->createElement('identifier', $doi);
-        $identifier->setAttribute('identifierType', 'DOI');
-        $documentNode->documentElement->appendChild($identifier);
-
-		return $documentNode;
-	}
-
-	private function createTitles(DOMDocument $documentNode, DataObject $object, null|Publication $parent, bool $isSubmission): DOMDocument
-    {
-		$locale = $isSubmission ? $object->getData('locale') : $parent->getData('locale');
-		if($object instanceof PublicationFormat) {
-            $localizedTitle = $parent->getLocalizedTitle($locale);
-            $localizedTitle .= ' - ' . $object->getName($locale);
-        } else {
-            $localizedTitle = $object->getLocalizedTitle($locale);
-        }
-
-		$titles = $documentNode->createElement('titles');
-		$titleValue = $this->xmlEscape($localizedTitle);
-
-        $title = $documentNode->createElement('title', $titleValue);
-        $pos = strpos($locale, '_');
-        if ($pos !== FALSE) {
-            $locale = substr_replace($locale, '-', $pos, strlen('_'));
-        }
-        $title->setAttribute('xml:lang', $locale);
-        $titles->appendChild($title);
-
-		$documentNode->documentElement->appendChild($titles);
-
-		return $documentNode;
-	}
-
-	private function createAuthors(DOMDocument $documentNode, DataObject $object, null|Publication $parent, bool $isSubmission): DOMDocument
-    {
-        $locale = $isSubmission ? $object->getData('locale') : $parent->getData('locale');
-		$creators = $documentNode->createElement('creators');
-		if ($isSubmission === TRUE) {
-			/** @var Publication $authors */
-			$authors = $object->getData('authors');
-			foreach ($authors as $author) {
-				$creator = $this->createAuthor($documentNode, $author, $locale);
-				if ($creator) {
-					$creators->appendChild($creator);
-					$documentNode->documentElement->appendChild($creators);
-				}
-			}
-		} elseif ($object instanceof PublicationFormat) {
-            /** @var Publication $authors */
-            $authors = $parent->getData('authors');
-            foreach ($authors as $author) {
-                $creator = $this->createAuthor($documentNode, $author, $locale);
-                if ($creator) {
-                    $creators->appendChild($creator);
-                    $documentNode->documentElement->appendChild($creators);
-                }
-            }
-        } else {
-			/** @var Chapter $object */
-			$chapterAuthors = $object->getAuthors()->toArray();
-			try {
-                foreach ( $chapterAuthors as $author ) {
-					$creator = $this->createAuthor($documentNode, $author, $locale);
-					if ($creator) {
-						$creators->appendChild($creator);
-						$documentNode->documentElement->appendChild($creators);
-					}
-				}
-			}
-			catch (Exception $e) {
-				DataciteExportPlugin::writeLog($e, 'ERROR');
-			}
-		}
-
-		return $documentNode;
-	}
-
-	private function createAuthor(DOMDocument $documentNode, Author $author, string $locale) : bool|DOMElement|null
-    {
-		$creator = $documentNode->createElement('creator');
-		$familyName = $author->getFamilyName($locale);
-		$givenName = $author->getGivenName($locale);
-
-		if (empty($familyName) && empty($givenName)) {
-			return NULL;
-		}
-
-        $creatorName = $documentNode->createElement('creatorName', $familyName . ', ' . $givenName);
-        $creatorName->setAttribute('nameType', 'Personal');
-        $creator->appendChild($creatorName);
-
-		return $creator;
-	}
-
-	private function createPublicationYear(DOMDocument $documentNode, DataObject$object, null|Publication$parent, bool $isSubmission): DOMDocument
-    {
-        $date = $object->getData('datePublished');
-        if ($object instanceof Publication) {
-            if (NULL === $date) {
-                $date = $object->getData('dateSubmitted');
-            }
-        } elseif ($object instanceof Chapter) {
-            if (NULL === $date) {
-                    $date = $parent->getData('datePublished') ?: $parent->getData('dateSubmitted');
-            }
-        } elseif ($object instanceof PublicationFormat) {
-            $date = $parent->getData('datePublished') ?: $parent->getData('dateSubmitted');
-        }
-
-        $publicationYear = $documentNode->createElement('publicationYear', substr($date, 0, 4));
-        $documentNode->documentElement->appendChild($publicationYear);
-
-		return $documentNode;
-	}
-
-	private function createPublisher($documentNode) {
-        $publisher = $documentNode->createElement('publisher', $this->getContext()->getData('publisher'));
-
-		$documentNode->documentElement->appendChild($publisher);
-
-		return $documentNode;
-	}
+        return $this->_plugin;
+    }
 }
