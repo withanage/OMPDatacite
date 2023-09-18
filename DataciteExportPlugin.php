@@ -34,12 +34,8 @@ class DataciteExportPlugin extends DOIPubIdExportPlugin {
 
 
     //DataCite API
-    public const DATACITE_API_URL = 'https://mds.test.datacite.org/'; //TODO: remove test
+    public const DATACITE_API_URL = 'https://mds.datacite.org/';
     public const DATACITE_API_URL_TEST = 'https://mds.test.datacite.org/';
-
-	//API response
-	public const DATACITE_API_RESPONSE_OK                         = [200, 201];
-	public const DATACITE_API_RESPONSE_DOI_HAS_ALREADY_BEEN_TAKEN = [422, 'This DOI has already been taken'];
 	#endregion
 
     protected DatacitePlugin $agencyPlugin;
