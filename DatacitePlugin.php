@@ -104,8 +104,12 @@ class DatacitePlugin extends GenericPlugin implements IDoiRegistrationAgency
         $items = [];
 
         foreach ($submissions as $submission) {
-            $items[] = $submission->getCurrentPublication();
-            $currentPublicationId = $submission->getCurrentPublication()->getId();
+            //publication
+            $publication = $submission->getCurrentPublication();
+            if ($publication->getDoi()) {
+                $items[] = $publication;
+            }
+            $currentPublicationId = $publication->getId();
 
             //chapters
             if (in_array(Repo::doi()::TYPE_CHAPTER, $context->getEnabledDoiTypes())) {
@@ -147,8 +151,12 @@ class DatacitePlugin extends GenericPlugin implements IDoiRegistrationAgency
         $items = [];
 
         foreach ($submissions as $submission) {
-            $items[] = $submission->getCurrentPublication();
-            $currentPublicationId = $submission->getCurrentPublication()->getId();
+            //publication
+            $publication = $submission->getCurrentPublication();
+            if ($publication->getDoi()) {
+                $items[] = $publication;
+            }
+            $currentPublicationId = $publication->getId();
 
             //chapters
             if (in_array(Repo::doi()::TYPE_CHAPTER, $context->getEnabledDoiTypes())) {
