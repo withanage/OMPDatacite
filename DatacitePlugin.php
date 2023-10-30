@@ -118,7 +118,9 @@ class DatacitePlugin extends GenericPlugin implements IDoiRegistrationAgency
                 /** @var Chapter $chapter */
                 foreach ($chapters as $chapter) {
                     if ($chapter->getDoi()) {
-                        $items[] = $chapter;
+                        if ($chapter->isPageEnabled() === 1) { //TODO: Remove this control structure, if omp core only assigns DOIs to chapters with own landing page.
+                            $items[] = $chapter;
+                        }
                     }
                 }
             }
@@ -165,7 +167,9 @@ class DatacitePlugin extends GenericPlugin implements IDoiRegistrationAgency
                 /** @var Chapter $chapter */
                 foreach ($chapters as $chapter) {
                     if ($chapter->getDoi()) {
-                        $items[] = $chapter;
+                        if ($chapter->isPageEnabled() === 1) { //TODO: Remove this control structure, if omp core only assigns DOIs to chapters with own landing page.
+                            $items[] = $chapter;
+                        }
                     }
                 }
             }
