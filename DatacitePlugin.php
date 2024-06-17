@@ -32,6 +32,7 @@ use PKP\plugins\GenericPlugin;
 use PKP\plugins\Hook;
 use PKP\plugins\PluginRegistry;
 use PKP\services\PKPSchemaService;
+use PKP\submissionFile\SubmissionFile;
 
 class DatacitePlugin extends GenericPlugin implements IDoiRegistrationAgency
 {
@@ -115,12 +116,18 @@ class DatacitePlugin extends GenericPlugin implements IDoiRegistrationAgency
             if (in_array(Repo::doi()::TYPE_CHAPTER, $context->getEnabledDoiTypes())) {
                 $chapterDAO = new ChapterDAO();
                 $chapters = $chapterDAO->getByPublicationId($currentPublicationId)->toAssociativeArray();
+                $onlyWithLandingPage = $this->getSetting($context->getId(), DataciteSettings::KEY_ONLY_WITH_LANDINGPAGE);
                 /** @var Chapter $chapter */
                 foreach ($chapters as $chapter) {
                     if ($chapter->getDoi()) {
-                        if ($chapter->isPageEnabled() === 1) { //TODO: Remove this control structure, if omp core only assigns DOIs to chapters with own landing page.
+                        if ($onlyWithLandingPage) { //TODO: Remove this control structure, if omp core only assigns DOIs to chapters with own landing page.
+                            if ($chapter->isPageEnabled() === 1) {
+                                $items[] = $chapter;
+                            }
+                        } else {
                             $items[] = $chapter;
                         }
+
                     }
                 }
             }
@@ -128,11 +135,31 @@ class DatacitePlugin extends GenericPlugin implements IDoiRegistrationAgency
             //publication formats
             if (in_array(Repo::doi()::TYPE_REPRESENTATION, $context->getEnabledDoiTypes())) {
                 $publicationFormatDAO = new PublicationFormatDAO();
-                $publicationFormats = $publicationFormatDAO->getByPublicationId($currentPublicationId)->toAssociativeArray();
+                $publicationFormats = $publicationFormatDAO->getByPublicationId($currentPublicationId);
                 /** @var PublicationFormat $publicationFormat */
                 foreach ($publicationFormats as $publicationFormat) {
                     if ($publicationFormat->getDoi()) {
                         $items[] = $publicationFormat;
+                    }
+                }
+            }
+
+            //submission files
+            if (in_array(Repo::doi()::TYPE_SUBMISSION_FILE, $context->getEnabledDoiTypes())) {
+                $submissionFiles = Repo::submissionFile()
+                    ->getCollector()
+                    ->filterBySubmissionIds([$submission->getId()])
+                    ->filterByFileStages([SubmissionFile::SUBMISSION_FILE_PROOF])
+                    ->filterByAssoc(
+                        Application::ASSOC_TYPE_PUBLICATION_FORMAT
+                    )
+                    ->getMany()
+                    ->toArray();
+
+                /** @var SubmissionFile $submissionFile */
+                foreach ($submissionFiles as $submissionFile) {
+                    if ($submissionFile->getDoi()) {
+                        $items[] = $submissionFile;
                     }
                 }
             }
@@ -164,12 +191,18 @@ class DatacitePlugin extends GenericPlugin implements IDoiRegistrationAgency
             if (in_array(Repo::doi()::TYPE_CHAPTER, $context->getEnabledDoiTypes())) {
                 $chapterDAO = new ChapterDAO();
                 $chapters = $chapterDAO->getByPublicationId($currentPublicationId)->toAssociativeArray();
+                $onlyWithLandingPage = $this->getSetting($context->getId(), DataciteSettings::KEY_ONLY_WITH_LANDINGPAGE);
                 /** @var Chapter $chapter */
                 foreach ($chapters as $chapter) {
                     if ($chapter->getDoi()) {
-                        if ($chapter->isPageEnabled() === 1) { //TODO: Remove this control structure, if omp core only assigns DOIs to chapters with own landing page.
+                        if ($onlyWithLandingPage) { //TODO: Remove this control structure, if omp core only assigns DOIs to chapters with own landing page.
+                            if ($chapter->isPageEnabled() === 1) {
+                                $items[] = $chapter;
+                            }
+                        } else {
                             $items[] = $chapter;
                         }
+
                     }
                 }
             }
@@ -182,6 +215,26 @@ class DatacitePlugin extends GenericPlugin implements IDoiRegistrationAgency
                 foreach ($publicationFormats as $publicationFormat) {
                     if ($publicationFormat->getDoi()) {
                         $items[] = $publicationFormat;
+                    }
+                }
+            }
+
+            //submission files
+            if (in_array(Repo::doi()::TYPE_SUBMISSION_FILE, $context->getEnabledDoiTypes())) {
+                $submissionFiles = Repo::submissionFile()
+                    ->getCollector()
+                    ->filterBySubmissionIds([$submission->getId()])
+                    ->filterByFileStages([SubmissionFile::SUBMISSION_FILE_PROOF])
+                    ->filterByAssoc(
+                        Application::ASSOC_TYPE_PUBLICATION_FORMAT
+                    )
+                    ->getMany()
+                    ->toArray();
+
+                /** @var SubmissionFile $submissionFile */
+                foreach ($submissionFiles as $submissionFile) {
+                    if ($submissionFile->getDoi()) {
+                        $items[] = $submissionFile;
                     }
                 }
             }
@@ -356,6 +409,7 @@ class DatacitePlugin extends GenericPlugin implements IDoiRegistrationAgency
             Repo::doi()::TYPE_PUBLICATION, //book
             Repo::doi()::TYPE_CHAPTER,  //chapter
             Repo::doi()::TYPE_REPRESENTATION, //publication format
+            Repo::doi()::TYPE_SUBMISSION_FILE, //submission file
         ];
     }
 }

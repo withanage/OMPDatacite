@@ -29,6 +29,7 @@ use PKP\core\PKPString;
 use PKP\filter\FilterGroup;
 use PKP\i18n\LocaleConversion;
 use PKP\plugins\importexport\native\filter\NativeExportFilter;
+use PKP\submissionFile\SubmissionFile;
 
 class DataciteXmlFilter extends NativeExportFilter
 {
@@ -81,7 +82,7 @@ class DataciteXmlFilter extends NativeExportFilter
         $cache = $plugin->getCache();
 
         // Get all objects
-        $publication = $chapter = $publicationFormat = null;
+        $publication = $chapter = $publicationFormat = $submissionFile = null;
         if ($input instanceof Publication) {
             $publication = $input;
             if (!$cache->isCached('publication', $publication->getId())) {
@@ -105,10 +106,20 @@ class DataciteXmlFilter extends NativeExportFilter
             if (!$cache->isCached('publicationFormats', $publicationFormat->getId())) {
                 $cache->add($publicationFormat, null);
             }
+        } elseif ($input instanceof SubmissionFile) {
+            $submissionFile = $input;
+            $submission = Repo::submission()->get($submissionFile->getData('submissionId'));
+            $publication = $submission->getCurrentPublication();
+            if (!$cache->isCached('publication', $publication->getId())) {
+                $cache->add($publication, null);
+            }
+            if (!$cache->isCached('submissionFile', $submissionFile->getId())) {
+                $cache->add($submissionFile, null);
+            }
         }
 
         // Identify the object locale.
-        $objectLocalePrecedence = $this->getObjectLocalePrecedence($context, $publication, $chapter, $publicationFormat);
+        $objectLocalePrecedence = $this->getObjectLocalePrecedence($context, $publication);
         // The publisher is required.
         // Use the press name as DataCite recommends for now.
         $publisher = $context->getData('publisher');
@@ -135,9 +146,9 @@ class DataciteXmlFilter extends NativeExportFilter
         $rootNode->appendChild($node = $doc->createElementNS($deployment->getNamespace(), 'identifier', htmlspecialchars($doi, ENT_COMPAT, 'UTF-8')));
         $node->setAttribute('identifierType', self::DATACITE_IDTYPE_DOI);
         // Creators (mandatory)
-        $rootNode->appendChild($this->createCreatorsNode($doc, $publication, $chapter, $publicationFormat, $publisher, $objectLocalePrecedence));
+        $rootNode->appendChild($this->createCreatorsNode($doc, $publication, $chapter, $publisher, $objectLocalePrecedence));
         // Title (mandatory)
-        $rootNode->appendChild($this->createTitlesNode($doc, $publication, $chapter, $publicationFormat, $objectLocalePrecedence));
+        $rootNode->appendChild($this->createTitlesNode($doc, $publication, $chapter, $publicationFormat, $submissionFile, $objectLocalePrecedence));
         // Publisher (mandatory)
         $rootNode->appendChild($node = $doc->createElementNS($deployment->getNamespace(), 'publisher', htmlspecialchars($publisher, ENT_COMPAT, 'UTF-8')));
         // Publication Year (mandatory)
@@ -160,10 +171,10 @@ class DataciteXmlFilter extends NativeExportFilter
         // Language
         $rootNode->appendChild($node = $doc->createElementNS($deployment->getNamespace(), 'language', LocaleConversion::getIso1FromLocale($objectLocalePrecedence[0])));
         // Resource Type
-        $resourceTypeNode = $this->createResourceTypeNode($doc, $publication, $chapter, $publicationFormat);
+        $resourceTypeNode = $this->createResourceTypeNode($doc, $publication, $chapter, $publicationFormat, $submissionFile);
         $rootNode->appendChild($resourceTypeNode);
         // Related Identifiers
-        $relatedIdentifiersNode = $this->createRelatedIdentifiersNode($doc, $publication, $chapter, $publicationFormat);
+        $relatedIdentifiersNode = $this->createRelatedIdentifiersNode($doc, $publication, $chapter, $publicationFormat, $submissionFile);
         if ($relatedIdentifiersNode) {
             $rootNode->appendChild($relatedIdentifiersNode);
         }
@@ -179,12 +190,12 @@ class DataciteXmlFilter extends NativeExportFilter
             $rootNode->appendChild($rightsNode);
         }
         // Descriptions
-        $descriptionsNode = $this->createDescriptionsNode($doc, $publication, $chapter, $publicationFormat, $objectLocalePrecedence);
+        $descriptionsNode = $this->createDescriptionsNode($doc, $publication, $chapter, $publicationFormat, $submissionFile, $objectLocalePrecedence);
         if ($descriptionsNode) {
             $rootNode->appendChild($descriptionsNode);
         }
         // relatedItems
-        $relatedItemsNode = $this->createRelatedItemsNode($doc, $publication, $chapter, $publicationFormat, $publisher, $objectLocalePrecedence);
+        $relatedItemsNode = $this->createRelatedItemsNode($doc, $publication, $chapter, $publicationFormat, $submissionFile, $publisher, $objectLocalePrecedence);
         if ($relatedItemsNode) {
             $rootNode->appendChild($relatedItemsNode);
         }
@@ -218,7 +229,6 @@ class DataciteXmlFilter extends NativeExportFilter
      * @param DOMDocument            $doc
      * @param Publication            $publication
      * @param Chapter|null           $chapter
-     * @param PublicationFormat|null $publicationFormat
      * @param string                 $publisher
      * @param array                  $objectLocalePrecedence
      *
@@ -229,7 +239,6 @@ class DataciteXmlFilter extends NativeExportFilter
         DOMDocument $doc,
         Publication $publication,
         ?Chapter $chapter,
-        ?PublicationFormat $publicationFormat,
         string $publisher,
         array $objectLocalePrecedence
     ): DOMElement {
@@ -296,6 +305,7 @@ class DataciteXmlFilter extends NativeExportFilter
      * @param Publication            $publication
      * @param Chapter|null           $chapter
      * @param PublicationFormat|null $publicationFormat
+     * @param SubmissionFile|null    $submissionFile
      * @param array                  $objectLocalePrecedence
      *
      * @return DOMElement
@@ -306,12 +316,24 @@ class DataciteXmlFilter extends NativeExportFilter
         Publication $publication,
         ?Chapter $chapter,
         ?PublicationFormat $publicationFormat,
+        ?SubmissionFile $submissionFile,
         array $objectLocalePrecedence
     ): DOMElement {
         /** @var DataciteExportDeployment $deployment*/
         $deployment = $this->getDeployment();
         $plugin = $deployment->getPlugin();
         // Get an array of localized titles.
+
+        $fileTitles = [];
+        if (null !== $submissionFile) {
+            $fileTitles = $submissionFile->getData('name');
+            if (is_array($fileTitles)) {
+                $fileTitles = $this->getTranslationsByPrecedence($fileTitles, $objectLocalePrecedence);
+            } else {
+                $fileTitle = $fileTitles;
+                $fileTitles = [$fileTitle];
+            }
+        }
         $publicationFormatNames = [];
         if (null !==  $publicationFormat) {
             $publicationFormatNames = $publicationFormat->getName();
@@ -328,13 +350,14 @@ class DataciteXmlFilter extends NativeExportFilter
         $publicationTitles = $this->getTranslationsByPrecedence($publicationTitles, $objectLocalePrecedence);
 
         // We expect at least one title.
-        $counter = count($publicationFormatNames) + count($chapterTitles) + count($publicationTitles);
+        $counter = count($fileTitles) + count($publicationFormatNames) + count($chapterTitles) + count($publicationTitles);
         assert($counter >= 1);
         $titlesNode = $doc->createElementNS($deployment->getNamespace(), 'titles');
         // Start with the primary object locale.
         $primaryPublicationTitle = array_shift($publicationTitles);
         $primaryChapterTitle = array_shift($chapterTitles);
         $primaryPublicationFormatName = array_shift($publicationFormatNames);
+        $primaryFileTitle = array_shift($fileTitles);
 
         if ($primaryPublicationFormatName) {
             $titlesNode->appendChild(
@@ -381,6 +404,23 @@ class DataciteXmlFilter extends NativeExportFilter
                 $titlesNode->appendChild($node = $doc->createElementNS($deployment->getNamespace(), 'title', htmlspecialchars(PKPString::html2text($title), ENT_COMPAT, 'UTF-8')));
                 $node->setAttribute('titleType', self::DATACITE_TITLETYPE_TRANSLATED);
             }
+        } elseif ($primaryFileTitle) {
+            $titlesNode->appendChild(
+                $node = $doc->createElementNS(
+                    $deployment->getNamespace(),
+                    'title',
+                    htmlspecialchars(
+                        PKPString::html2text($primaryFileTitle),
+                        ENT_COMPAT,
+                        'UTF-8'
+                    )
+                )
+            );
+            // Then let the translated titles follow.
+            foreach ($fileTitles as $locale => $title) {
+                $titlesNode->appendChild($node = $doc->createElementNS($deployment->getNamespace(), 'title', htmlspecialchars(PKPString::html2text($title), ENT_COMPAT, 'UTF-8')));
+                $node->setAttribute('titleType', self::DATACITE_TITLETYPE_TRANSLATED);
+            }
         } else {
             $titlesNode->appendChild(
                 $node = $doc->createElementNS(
@@ -410,6 +450,7 @@ class DataciteXmlFilter extends NativeExportFilter
      * @param Publication            $publication
      * @param Chapter|null           $chapter
      * @param PublicationFormat|null $publicationFormat
+     * @param SubmissionFile|null    $submissionFile
      *
      * @return DOMElement
      * @throws DOMException
@@ -418,11 +459,15 @@ class DataciteXmlFilter extends NativeExportFilter
         DOMDocument $doc,
         Publication $publication,
         ?Chapter $chapter,
-        ?PublicationFormat $publicationFormat
+        ?PublicationFormat $publicationFormat,
+        ?SubmissionFile $submissionFile
     ): DOMElement {
         /** @var DataciteExportDeployment $deployment */
         $deployment = $this->getDeployment();
         switch (true) {
+            case null !== $submissionFile:
+                $resourceType = 'File';
+                break;
             case null !== $chapter:
                 $resourceType = 'Chapter';
                 break;
@@ -433,6 +478,10 @@ class DataciteXmlFilter extends NativeExportFilter
             // Create the resourceType element for Chapters.
             $resourceTypeNode = $doc->createElementNS($deployment->getNamespace(), 'resourceType', $resourceType);
             $resourceTypeNode->setAttribute('resourceTypeGeneral', 'BookChapter');
+        } elseif ($resourceType === 'File') {
+            // Create the resourceType element for Files.
+            $resourceTypeNode = $doc->createElementNS($deployment->getNamespace(), 'resourceType');
+            $resourceTypeNode->setAttribute('resourceTypeGeneral', 'Dataset');
         } else {
             $resourceTypeNode = $doc->createElementNS($deployment->getNamespace(), 'resourceType', $resourceType);
             $resourceTypeNode->setAttribute('resourceTypeGeneral', 'Book');
@@ -447,6 +496,7 @@ class DataciteXmlFilter extends NativeExportFilter
      * @param Publication            $publication
      * @param Chapter|null           $chapter
      * @param PublicationFormat|null $publicationFormat
+     * @param SubmissionFile|null    $submissionFile
      *
      * @return ?DOMElement
      * @throws DOMException
@@ -455,11 +505,13 @@ class DataciteXmlFilter extends NativeExportFilter
         DOMDocument $doc,
         Publication $publication,
         ?Chapter $chapter,
-        ?PublicationFormat $publicationFormat
+        ?PublicationFormat $publicationFormat,
+        ?SubmissionFile $submissionFile
     ): ?DOMElement {
         $deployment = $this->getDeployment();
         $relatedIdentifiersNode = $doc->createElementNS($deployment->getNamespace(), 'relatedIdentifiers');
         switch (true) {
+            case null !== $submissionFile:
             case null !== $publicationFormat:
             case null !== $chapter:
                 assert(isset($publication));
@@ -485,6 +537,7 @@ class DataciteXmlFilter extends NativeExportFilter
 
                 // Publication formats
                 $publicationFormats = $publication->getData('publicationFormats');
+                /** @var PublicationFormat $pubFormat */
                 foreach ($publicationFormats as $pubFormat) {
                     $doi = $pubFormat->getDoi();
                     if (!empty($doi)) {
@@ -492,8 +545,31 @@ class DataciteXmlFilter extends NativeExportFilter
                         $node->setAttribute('relatedIdentifierType', self::DATACITE_IDTYPE_DOI);
                         $node->setAttribute('relationType', self::DATACITE_RELTYPE_HASPART);
                     }
+                    // Submission files
+                    $submissionFiles = Repo::submissionFile()
+                        ->getCollector()
+                        ->filterBySubmissionIds([$publication->getData('submissionId')])
+                        ->filterByFileStages([SubmissionFile::SUBMISSION_FILE_PROOF])
+                        ->filterByAssoc(
+                            Application::ASSOC_TYPE_PUBLICATION_FORMAT,
+                            [$pubFormat->getId()]
+                        )
+                        ->getMany()
+                        ->toArray();
+
+                    /** @var SubmissionFile $file */
+                    foreach ($submissionFiles as $file) {
+                        $fileDoi = $file->getDoi();
+                        if (!empty($fileDoi)) {
+                            $relatedIdentifiersNode->appendChild($node = $doc->createElementNS($deployment->getNamespace(), 'relatedIdentifier', htmlspecialchars($fileDoi, ENT_COMPAT, 'UTF-8')));
+                            $node->setAttribute('relatedIdentifierType', self::DATACITE_IDTYPE_DOI);
+                            $node->setAttribute('relationType', self::DATACITE_RELTYPE_HASPART);
+                        }
+                        unset($file, $fileDoi);
+                    }
                     unset($pubFormat, $doi);
                 }
+
                 break;
         }
         if ($relatedIdentifiersNode->hasChildNodes()) {
@@ -510,9 +586,10 @@ class DataciteXmlFilter extends NativeExportFilter
      * @param Publication            $publication
      * @param Chapter|null           $chapter
      * @param PublicationFormat|null $publicationFormat
+     * @param SubmissionFile|null    $submissionFile
      * @param array                  $objectLocalePrecedence
      *
-     * @return ?DOMElement Can be null if a size cannot be identified for the given object.
+     * @return ?DOMElement Can be null.
      * @throws DOMException
      */
     public function createDescriptionsNode(
@@ -520,6 +597,7 @@ class DataciteXmlFilter extends NativeExportFilter
         Publication $publication,
         ?Chapter $chapter,
         ?PublicationFormat $publicationFormat,
+        ?SubmissionFile $submissionFile,
         array $objectLocalePrecedence
     ): ?DOMElement {
         /** @var DataciteExportDeployment $deployment */
@@ -549,10 +627,11 @@ class DataciteXmlFilter extends NativeExportFilter
      * @param Publication            $publication
      * @param Chapter|null           $chapter
      * @param PublicationFormat|null $publicationFormat
+     * @param SubmissionFile|null    $submissionFile
      * @param string                 $publisher
      * @param array                  $objectLocalePrecedence
      *
-     * @return ?DOMElement Can be null if a size cannot be identified for the given object.
+     * @return ?DOMElement Can be null
      * @throws DOMException
      */
     public function createRelatedItemsNode(
@@ -560,6 +639,7 @@ class DataciteXmlFilter extends NativeExportFilter
         Publication $publication,
         ?Chapter $chapter,
         ?PublicationFormat $publicationFormat,
+        ?SubmissionFile $submissionFile,
         string $publisher,
         array $objectLocalePrecedence
     ): ?DOMElement {
@@ -570,7 +650,7 @@ class DataciteXmlFilter extends NativeExportFilter
         $request = Application::get()->getRequest();
 
         $relatedItemsNode = null;
-        if (null !== $chapter) {
+        if (null !== $chapter || null !== $publicationFormat || null !== $submissionFile) {
             $relatedItemsNode = $doc->createElementNS($deployment->getNamespace(), 'relatedItems');
 
             $relatedItemNode = $doc->createElementNS($deployment->getNamespace(), 'relatedItem');
@@ -628,17 +708,13 @@ class DataciteXmlFilter extends NativeExportFilter
      *
      * @param Context                $context
      * @param Publication|null       $publication
-     * @param Chapter|null           $chapter
-     * @param PublicationFormat|null $publicationFormat
      *
      * @return array A list of valid PKP locales in descending
      *  order of priority.
      */
     public function getObjectLocalePrecedence(
         Context $context,
-        ?Publication $publication,
-        ?Chapter $chapter,
-        ?PublicationFormat $publicationFormat
+        ?Publication $publication
     ): array {
         $locales = [];
         if ($publication instanceof Publication) {

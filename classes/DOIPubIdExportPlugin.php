@@ -23,6 +23,7 @@ use APP\publicationFormat\PublicationFormat;
 use APP\template\TemplateManager;
 use PKP\context\Context;
 use PKP\core\PKPString;
+use PKP\submissionFile\SubmissionFile;
 
 
 abstract class DOIPubIdExportPlugin extends PubObjectsExportPlugin
@@ -185,6 +186,28 @@ abstract class DOIPubIdExportPlugin extends PubObjectsExportPlugin
         }
 
         return $validPublishedPublicationFormatsWithDoi;
+    }
+
+    /**
+     * Get publication formats from publication format IDs.
+     *
+     * @param array $submissionFileIds
+     * @param Context $context
+     *
+     * @return array
+     */
+    public function getPublishedSubmissionFiles(array $submissionFileIds, Context $context): array
+    {
+        $validPublishedSubmissionFiles = parent::getPublishedSubmissionFiles($submissionFileIds, $context);
+        $validPublishedSubmissionFilesWithDoi = [];
+        /** @var SubmissionFile $submissionFile */
+        foreach ($validPublishedSubmissionFiles as $submissionFile) {
+            if ($submissionFile->getDoi() !== null) {
+                $validPublishedSubmissionFilesWithDoi[] = $submissionFile;
+            }
+        }
+
+        return $validPublishedSubmissionFilesWithDoi;
     }
 
 

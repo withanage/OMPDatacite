@@ -45,7 +45,7 @@ msgid "plugins.importexport.datacite.settings.description"
 msgstr "Description"
 
 msgid "plugins.importexport.datacite.intro"
-msgstr "This plugin registers DOIs for monographs, chapters and publication formats  for DOI provider <a href=\"https://datacite.org\">Datacite.org</a>."
+msgstr "This plugin registers DOIs for monographs, chapters, publication formats and files for DOI provider <a href=\"https://datacite.org\">Datacite.org</a>."
 
 msgid "plugins.importexport.datacite.settings.label"
 msgstr "Settings"
@@ -91,9 +91,6 @@ msgstr "Test URL"
 
 msgid "plugins.importexport.datacite.senderTask.name"
 msgstr "DataCite automatic registration task"
-
-msgid "plugins.importexport.datacite.cliUsage"
-msgstr "Usage: {$scriptName} {$pluginName} export [outputFileName] [journal_path] {issues|articles|galleys} objectId1 [objectId2] ... {$scriptName} {$pluginName} register [journal_path] {issues|articles|galleys} objectId1 [objectId2] ..."
 
 msgid "plugins.importexport.datacite.tab.monographs"
 msgstr "Monographs / Chapters"
@@ -175,3 +172,9 @@ msgstr "Datacite Manager Plugin"
 
 msgid "plugins.generic.datacite.description"
 msgstr "Handles depositing and exporting Datacite metadata"
+
+msgid "plugins.importexport.datacite.settings.form.onlyWithLandingPage.label"
+msgstr "Chapters without own page"
+
+msgid "plugins.importexport.datacite.settings.form.onlyWithLandingPage.description"
+msgstr "Deposit only chapters with own page"

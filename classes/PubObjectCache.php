@@ -20,6 +20,7 @@ use APP\monograph\Chapter;
 use APP\publication\Publication;
 use APP\publicationFormat\PublicationFormat;
 use DataObject;
+use PKP\submissionFile\SubmissionFile;
 
 class PubObjectCache
 {
@@ -53,6 +54,13 @@ class PubObjectCache
             $this->_insertInternally($object, 'publicationFormats', $object->getId());
             if ($parent) {
                 $this->_insertInternally($object, 'publicationFormatsByPublication', $parent->getId(), $object->getId());
+            }
+        }
+        if ($object instanceof SubmissionFile) {
+            assert($parent instanceof Publication);
+            $this->_insertInternally($object, 'submissionFiles', $object->getId());
+            if ($parent) {
+                $this->_insertInternally($object, 'submissionFilesByPublication', $parent->getId(), $object->getId());
             }
         }
     }

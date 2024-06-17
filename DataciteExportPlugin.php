@@ -35,6 +35,7 @@ class DataciteExportPlugin extends DOIPubIdExportPlugin {
 
     //DataCite API
     public const DATACITE_API_URL = 'https://mds.datacite.org/';
+
     public const DATACITE_API_URL_TEST = 'https://mds.test.datacite.org/';
 	#endregion
 
@@ -84,6 +85,14 @@ class DataciteExportPlugin extends DOIPubIdExportPlugin {
     public function getRepresentationFilter(): string
     {
         return 'publicationFormat=>datacite-xml';
+    }
+
+    /**
+     * @copydoc PubObjectsExportPlugin::getRepresentationFilter()
+     */
+    public function getSubmissionFileFilter(): string
+    {
+        return 'submissionFile=>datacite-xml';
     }
 
     public function getPluginSettingsPrefix(): string
@@ -201,7 +210,7 @@ class DataciteExportPlugin extends DOIPubIdExportPlugin {
                     $this->getExportPath(),
                     $objectFileNamePart,
                     $context,
-                    '.xml'
+                    '.'. count($objects) .'.xml'
                 );
                 $fileManager->writeFile($exportFileName, $exportXml);
                 $exportedFiles[] = $exportFileName;
@@ -424,6 +433,9 @@ class DataciteExportPlugin extends DOIPubIdExportPlugin {
                     $url = $dispatcher->url($request, PKPApplication::ROUTE_PAGE, $context->getPath(), 'catalog', 'book', [$publication->getData('submissionId')], null, null, true);
                 }
                 break;
+            case $object instanceof SubmissionFile:
+                $url = $dispatcher->url($request, PKPApplication::ROUTE_PAGE, $context->getPath(), 'catalog', 'view', [$object->getData('submissionId'), $object->getData('assocId'), $object->getId()], null, null, true);
+                break;
         }
 
         if ($this->isTestMode($context)) {
@@ -446,6 +458,8 @@ class DataciteExportPlugin extends DOIPubIdExportPlugin {
             return $this->getChapterFilter();
         } elseif ($object instanceof PublicationFormat) {
             return $this->getRepresentationFilter();
+        } elseif ($object instanceof SubmissionFile) {
+            return $this->getSubmissionFileFilter();
         } else {
             return '';
         }
@@ -459,6 +473,8 @@ class DataciteExportPlugin extends DOIPubIdExportPlugin {
             return 'chapter-' . $object->getSourceChapterId();
         } elseif ($object instanceof PublicationFormat) {
             return 'publicationFormat-' . $object->getId();
+        } elseif ($object instanceof SubmissionFile) {
+            return 'submissionFile-' . $object->getId();
         } else {
             return '';
         }

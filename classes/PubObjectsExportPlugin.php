@@ -185,6 +185,7 @@ abstract class PubObjectsExportPlugin extends ImportExportPlugin
             case 'exportPublications':
             case 'exportChapters':
             case 'exportRepresentations':
+            case 'exportSubmissionFiles':
                 $this->prepareAndExportPubObjects($request, $context);
         }
     }
@@ -201,6 +202,7 @@ abstract class PubObjectsExportPlugin extends ImportExportPlugin
         $selectedPublications = (array) $request->getUserVar('selectedPublications');
         $selectedChapters = (array) $request->getUserVar('selectedChapters');
         $selectedRepresentations = (array) $request->getUserVar('selectedRepresentations');
+        $selectedSubmissionFiles = (array) $request->getUserVar('selectedSubmissionFiles');
         $tab = (string) $request->getUserVar('tab');
         $noValidation = !$request->getUserVar('validation');
         $objects = [];
@@ -213,7 +215,7 @@ abstract class PubObjectsExportPlugin extends ImportExportPlugin
         if (!empty($args['chapterIds'])) {
             $selectedChapters = (array) $args['chapterIds'];
         }
-        if (empty($selectedPublications) && empty($selectedChapters) && empty($selectedRepresentations)) {
+        if (empty($selectedPublications) && empty($selectedChapters) && empty($selectedRepresentations) && empty($selectedSubmissionFiles)) {
             fatalError(__('plugins.importexport.common.error.noObjectsSelected'));
         }
         if (!empty($selectedPublications)) {
@@ -228,6 +230,10 @@ abstract class PubObjectsExportPlugin extends ImportExportPlugin
             $objects = $this->getPublishedPublicationFormats($selectedRepresentations, $context);
             $filter = $this->getRepresentationFilter();
             $objectsFileNamePart = 'publicationFormats';
+        } elseif (!empty($selectedSubmissionFiles)) {
+            $objects = $this->getPublishedSubmissionFiles($selectedSubmissionFiles, $context);
+            $filter = $this->getSubmissionFileFilter();
+            $objectsFileNamePart = 'submissionFiles';
         }
 
         // Execute export action
@@ -290,7 +296,7 @@ abstract class PubObjectsExportPlugin extends ImportExportPlugin
             // Get the XML
             $exportXml = $this->exportXML($objects, $filter, $context, $noValidation);
             // Write the XML to a file.
-            // export file name example: crossref-20160723-160036-articles-1.xml
+            // export file name example: datacite-20160723-160036-articles-1.xml
             $fileManager = new FileManager();
             $exportFileName = $this->getExportFileName($this->getExportPath(), $objectsFileNamePart, $context, '.xml');
             $fileManager->writeFile($exportFileName, $exportXml);
@@ -394,6 +400,16 @@ abstract class PubObjectsExportPlugin extends ImportExportPlugin
      * @return string|null
      */
     public function getRepresentationFilter(): ?string
+    {
+        return null;
+    }
+
+    /**
+     * Get the submission file filter.
+     *
+     * @return string|null
+     */
+    public function getSubmissionFileFilter(): ?string
     {
         return null;
     }
@@ -732,6 +748,11 @@ abstract class PubObjectsExportPlugin extends ImportExportPlugin
                 $filter = $this->getRepresentationFilter();
                 $objectsFileNamePart = 'publicationFormats';
                 break;
+            case 'submissionFiles':
+                $objects = $this->getPublishedSubmissionFiles($args, $context);
+                $filter = $this->getSubmissionFileFilter();
+                $objectsFileNamePart = 'submissionFiles';
+                break;
             default:
                 $this->usage($scriptName);
                 return;
@@ -812,7 +833,7 @@ abstract class PubObjectsExportPlugin extends ImportExportPlugin
         $validPublishedPublications = [];
         foreach ($validPublicationIds as $publicationId) {
             $publication = Repo::publication()->get($publicationId);
-            if( $publication->getData('status') === PKPSubmission::STATUS_PUBLISHED ) {
+            if ($publication->getData('status') === PKPSubmission::STATUS_PUBLISHED) {
                 $validPublishedPublications[$publicationId] = $publication;
             }
         }
@@ -835,7 +856,7 @@ abstract class PubObjectsExportPlugin extends ImportExportPlugin
         foreach ($chapterIds as $chapterId) {
             $chapter = $chapterDao->getChapter( $chapterId );
             $publication = Repo::publication()->get($chapter->getData('publicationId'));
-            if( $publication->getData('status') === PKPSubmission::STATUS_PUBLISHED ) {
+            if ($publication->getData('status') === PKPSubmission::STATUS_PUBLISHED) {
                 $chapters[$chapterId] = $chapter;
             }
         }
@@ -859,12 +880,36 @@ abstract class PubObjectsExportPlugin extends ImportExportPlugin
         foreach ($publicationFormatIds as $publicationFormatId) {
             $publicationFormat = $publicationFormatDao->getById($publicationFormatId);
             $publication = Repo::publication()->get($publicationFormat->getData('publicationId'));
-            if( $publication->getData('status') === PKPSubmission::STATUS_PUBLISHED ) {
+            if ($publication->getData('status') === PKPSubmission::STATUS_PUBLISHED) {
                 $publicationFormats[$publicationFormatId] = $publicationFormat;
             }
         }
 
         return $publicationFormats;
+    }
+
+
+    /**
+     * Get submission files from submission file IDs.
+     *
+     * @param array $submissionFileIds
+     * @param Context $context
+     *
+     * @return array
+     */
+    public function getPublishedSubmissionFiles(array $submissionFileIds, Context $context): array
+    {
+        $submissionFiles = [];
+        foreach ($submissionFileIds as $submissionFileId) {
+            $submissionFile = Repo::submissionFile()->get($submissionFileId);
+            $submission = Repo::submission()->get($submissionFile->getData('submissionId'));
+            $publication = $submission->getCurrentPublication();
+            if ($publication->getData('status') === PKPSubmission::STATUS_PUBLISHED) {
+                $submissionFiles[$submissionFileId] = $submissionFile;
+            }
+        }
+
+        return $submissionFiles;
     }
 
     /**

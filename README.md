@@ -1,7 +1,7 @@
 ### OMPDatacite Plugin
 
 #### Introduction
-This plugin registers DOIS for monographs, chapters and publication formats for DOI provider [Datacite.org](https://datacite.org).
+This plugin registers DOIS for monographs, chapters, publication formats and files for DOI provider [Datacite.org](https://datacite.org).
 
 Current Schema version is [4.4](https://support.datacite.org/docs/datacite-metadata-schema-44)
 

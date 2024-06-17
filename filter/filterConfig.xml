@@ -33,6 +33,13 @@
                 description="plugins.importexport.datacite.description"
                 inputType="class::classes.publicationFormat.PublicationFormat"
                 outputType="xml::schema(http://schema.datacite.org/meta/kernel-4/metadata.xsd)" />
+        <!-- DataCite XML submission file output -->
+        <filterGroup
+                symbolic="submissionFile=>datacite-xml"
+                displayName="plugins.importexport.datacite.displayName"
+                description="plugins.importexport.datacite.description"
+                inputType="class::lib.pkp.classes.submissionFile.SubmissionFile"
+                outputType="xml::schema(http://schema.datacite.org/meta/kernel-4/metadata.xsd)" />
     </filterGroups>
     <filters>
         <!-- DataCite XML publication output -->
@@ -48,6 +55,11 @@
         <!-- DataCite XML publication format output -->
         <filter
                 inGroup="publicationFormat=>datacite-xml"
+                class="APP\plugins\generic\datacite\filter\DataciteXmlFilter"
+                isTemplate="0" />
+        <!-- DataCite XML submission file output -->
+        <filter
+                inGroup="submissionFile=>datacite-xml"
                 class="APP\plugins\generic\datacite\filter\DataciteXmlFilter"
                 isTemplate="0" />
     </filters>

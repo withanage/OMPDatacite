@@ -32,6 +32,7 @@ class DataciteSettings extends RegistrationAgencySettings
     public const KEY_TEST_USERNAMER = 'testUsername';
     public const KEY_TEST_PASSWORD = 'testPassword';
     public const KEY_TEST_DOI_PREFIX = 'testDOIPrefix';
+    public const KEY_ONLY_WITH_LANDINGPAGE = 'onlyWithLandingPage';
     public function getSchema(): stdClass
     {
         return (object) [
@@ -65,6 +66,10 @@ class DataciteSettings extends RegistrationAgencySettings
                     'type' => 'string',
                     'validation' => ['nullable', 'max:50']
                 ],
+                self::KEY_ONLY_WITH_LANDINGPAGE => (object) [
+                    'type' => 'boolean',
+                    'validation' => ['nullable']
+                ],
             ],
         ];
     }
@@ -88,6 +93,13 @@ class DataciteSettings extends RegistrationAgencySettings
                 'description' => __('plugins.importexport.datacite.settings.form.password.description'),
                 'inputType' => 'password',
                 'value' => $this->agencyPlugin->getSetting($context->getId(), self::KEY_PASSWORD),
+            ]),
+            new FieldOptions(self::KEY_ONLY_WITH_LANDINGPAGE, [
+                'label' => __('plugins.importexport.datacite.settings.form.onlyWithLandingPage.label'),
+                'options' => [
+                    ['value' => true, 'label' => __('plugins.importexport.datacite.settings.form.onlyWithLandingPage.description')],
+                ],
+                'value' => $this->agencyPlugin->getSetting($context->getId(), self::KEY_ONLY_WITH_LANDINGPAGE),
             ]),
             new FieldOptions(self::KEY_TEST_MODE, [
                 'label' => __('plugins.importexport.common.settings.form.testMode.label'),
