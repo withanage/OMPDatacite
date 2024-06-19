@@ -14,8 +14,8 @@
 <version>
 	<application>datacite</application>
 	<type>plugins.generic</type>
-	<release>2.0.0.0</release>
-	<date>2023-07-10</date>
+	<release>3.4.0.1</release>
+	<date>2024-06-19</date>
 	<lazy-load>1</lazy-load>
 	<class>DatacitePlugin</class>
 </version>
